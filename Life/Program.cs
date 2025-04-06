@@ -87,22 +87,19 @@ namespace cli_life {
         }
       }
     }
-    public static Board LoadFromFile(string fileName) {
+    public void LoadFromFile(string fileName) {
       using (StreamReader reader = new StreamReader(fileName)) {
         var dimensions = reader.ReadLine().Split(' ');
         int cols = int.Parse(dimensions[0]);
         int rows = int.Parse(dimensions[1]);
-        int cellSize = int.Parse(dimensions[2]);
-        Board board = new Board(cols * cellSize, rows * cellSize, cellSize);
+        //int cellSize = int.Parse(dimensions[2]);
 
         for (int y = 0; y < rows; y++) {
           string line = reader.ReadLine();
           for (int x = 0; x < cols; x++) {
-            board.Cells[x, y].IsAlive = line[x] == '1';
+            Cells[x, y].IsAlive = line[x] == '1';
           }
         }
-
-        return board;
       }
     }
     public void LoadPattern(string fileName, int offsetX = 0, int offsetY = 0) {
@@ -124,22 +121,159 @@ namespace cli_life {
     public double LiveDensity { get; set; } = 0.5;
     public int Delay { get; set; } = 1000;
   }
+  public class ClusterAnalyzer {
+    public static List<HashSet<(int, int)>> FindClusters(Board board) {
+      var clusters = new List<HashSet<(int, int)>>();
+      var visited = new bool[board.Columns, board.Rows];
+
+      for (int y = 0; y < board.Rows; y++) {
+        for (int x = 0; x < board.Columns; x++) {
+          if (board.Cells[x, y].IsAlive && !visited[x, y]) {
+            var cluster = new HashSet<(int, int)>();
+            ExploreCluster(board, x, y, visited, cluster);
+            clusters.Add(cluster);
+          }
+        }
+      }
+
+      return clusters;
+    }
+
+    private static void ExploreCluster(Board board, int x, int y, bool[,] visited, HashSet<(int, int)> cluster) {
+      var queue = new Queue<(int, int)>();
+      queue.Enqueue((x, y));
+      visited[x, y] = true;
+
+      while (queue.Count > 0) {
+        var (cx, cy) = queue.Dequeue();
+        cluster.Add((cx, cy));
+
+        for (int dy = -1; dy <= 1; dy++) {
+          for (int dx = -1; dx <= 1; dx++) {
+            if (dx == 0 && dy == 0)
+              continue;
+
+            int nx = (cx + dx + board.Columns) % board.Columns;
+            int ny = (cy + dy + board.Rows) % board.Rows;
+
+            if (board.Cells[nx, ny].IsAlive && !visited[nx, ny]) {
+              visited[nx, ny] = true;
+              queue.Enqueue((nx, ny));
+            }
+          }
+        }
+      }
+    }
+
+    public static string ClassifyCluster(HashSet<(int x, int y)> cluster, string patternsDir) {
+      var normalized = NormalizeCluster(cluster);
+
+      var templates = LoadTemplates(patternsDir);
+
+      foreach (var (name, template) in templates) {
+        if (AreClustersEqual(normalized, template)) {
+          return name;
+        }
+      }
+
+      return $"Неизвестная фигура ({cluster.Count} клеток)";
+    }
+
+    private static HashSet<(int x, int y)> NormalizeCluster(HashSet<(int x, int y)> cluster) {
+      int minX = cluster.Min(p => p.x);
+      int minY = cluster.Min(p => p.y);
+
+      return [.. cluster.Select(p => (p.x - minX, p.y - minY))];
+    }
+
+    private static Dictionary<string, HashSet<(int x, int y)>> LoadTemplates(string dir) {
+      var templates = new Dictionary<string, HashSet<(int x, int y)>>();
+
+      foreach (var file in Directory.GetFiles(dir, "*.txt")) {
+        var pattern = new HashSet<(int x, int y)>();
+        string[] lines = File.ReadAllLines(file);
+
+        for (int y = 0; y < lines.Length; y++) {
+          for (int x = 0; x < lines[y].Length; x++) {
+            if (lines[y][x] == '1') {
+              pattern.Add((x, y));
+            }
+          }
+        }
+
+        templates.Add(Path.GetFileNameWithoutExtension(file), pattern);
+      }
+
+      return templates;
+    }
+
+    private static bool AreClustersEqual(
+        HashSet<(int x, int y)> cluster1,
+        HashSet<(int x, int y)> cluster2) {
+      if (cluster1.Count != cluster2.Count)
+        return false;
+
+      for (int rotation = 0; rotation < 4; rotation++) {
+        var rotated = RotateCluster(cluster1, rotation);
+        if (rotated.SetEquals(cluster2))
+          return true;
+      }
+
+      return false;
+    }
+
+    private static HashSet<(int x, int y)> RotateCluster(
+        HashSet<(int x, int y)> cluster,
+        int rotations) {
+      var result = new HashSet<(int x, int y)>();
+      int size = cluster.Max(p => Math.Max(p.x, p.y)) + 1;
+
+      foreach (var (x, y) in cluster) {
+        var (rx, ry) = (x, y);
+
+        for (int i = 0; i < rotations; i++) {
+          (rx, ry) = (ry, size - 1 - rx);
+        }
+
+        result.Add((rx, ry));
+      }
+
+      return result;
+    }
+  }
+  public class StabilityAnalyzer {
+    private const int StabilityThreshold = 5;
+    private Queue<int> history = new Queue<int>();
+
+    public bool CheckStability(Board board) {
+      int aliveCount = 0;
+      for (int y = 0; y < board.Rows; y++)
+        for (int x = 0; x < board.Columns; x++)
+          if (board.Cells[x, y].IsAlive)
+            aliveCount++;
+
+      history.Enqueue(aliveCount);
+      if (history.Count > StabilityThreshold)
+        history.Dequeue();
+
+      return history.Distinct().Count() == 1 && history.Count == StabilityThreshold;
+    }
+  }
   class Program {
     static Board board;
     static GameSettings settings;
+    static StabilityAnalyzer stabilityAnalyzer = new StabilityAnalyzer();
     static int delay;
     static int generation = 1;
 
     static private void Reset(string fileName = "") {
-      if (string.IsNullOrEmpty(fileName)) {
-        board = new Board(
+      board = new Board(
           width: settings.Width,
           height: settings.Height,
           cellSize: settings.CellSize,
           liveDensity: settings.LiveDensity);
-      }
-      else {
-        board = Board.LoadFromFile(fileName);
+      if (!string.IsNullOrEmpty(fileName)) {
+        board.LoadFromFile(fileName);
       }
     }
     static void Render() {
@@ -170,22 +304,54 @@ namespace cli_life {
         delay = settings.Delay;
       }
     }
+    static int keyAction(string savePath) {
+      if (Console.KeyAvailable) {
+        var key = Console.ReadKey(true).Key;
+        if (key == ConsoleKey.S) {
+          board.SaveToFile(savePath);
+          Console.WriteLine("\nState saved to board.txt");
+        }
+        else if (key == ConsoleKey.L) {
+          board.LoadFromFile(savePath);
+          Console.WriteLine("\nState loaded from board.txt");
+        }
+        else if (key == ConsoleKey.Escape) {
+          return 1;
+        }
+      }
+      return 0;
+    }
+    static void printClustersInfo(string patternsPath) {
+      var clusters = ClusterAnalyzer.FindClusters(board);
+      Console.WriteLine($"\nclusters count: {clusters.Count}");
+      foreach (var cluster in clusters.OrderBy(c => -c.Count)) {
+        Console.WriteLine($"{ClusterAnalyzer.ClassifyCluster(cluster, patternsPath)} (размер: {cluster.Count})");
+      }
+    }
     static void Main(string[] args) {
       string projectDirectory = Directory.GetParent(Environment.CurrentDirectory).Parent.Parent.FullName;
       string configPath = Path.Combine(projectDirectory, "config.json");
       string savePath = Path.Combine(projectDirectory, "board.txt");
-      string patternPath = Path.Combine(projectDirectory, "patterns/gosperGun.txt");
+      string patternsPath = Path.Combine(projectDirectory, "patterns/");
       LoadSettings(configPath);
-      Reset(savePath);
-      //Reset();
-      board.LoadPattern(patternPath);
-      while (generation < 101) {
+      //Reset(savePath);
+      Reset();
+      board.LoadPattern(patternsPath + "gosperGun.txt");
+      while (true) {
+        if (keyAction(savePath) == 1)
+          break;
+
         Console.Clear();
         Render();
+
+        //printClustersInfo(patternsPath);
+        if (stabilityAnalyzer.CheckStability(board)) {
+          Console.WriteLine($"\nСистема стабилизировалась на поколении {generation}");
+        }
+
         board.Advance();
         Thread.Sleep(delay);
       }
-      board.SaveToFile(savePath);
     }
   }
 }
