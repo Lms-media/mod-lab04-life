@@ -375,7 +375,7 @@ namespace cli_life {
       string projectDirectory = Directory.GetParent(Environment.CurrentDirectory).Parent.Parent.FullName;
       string configPath = Path.Combine(projectDirectory, "config.json");
       string savePath = Path.Combine(projectDirectory, "board.txt");
-      string analiticsPath = Path.Combine(projectDirectory, "stabilityAnalysis/stableGenerationsFor0_9.txt");
+      string analiticsPath = Path.Combine(projectDirectory, "stabilityAnalysis/stableGenerationsFor0_7.txt");
       string patternsPath = Path.Combine(projectDirectory, "patterns/");
       LoadSettings(configPath);
       Reset(savePath);

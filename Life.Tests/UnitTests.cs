@@ -42,6 +42,8 @@ public class CellsTests {
 
 [TestClass]
 public class BoardTests {
+  string testDir = Directory.GetCurrentDirectory();
+
   [TestMethod]
   public void BoardTest1() {
     var board = new Board(100, 50, 2);
@@ -95,7 +97,8 @@ public class BoardTests {
 
   [TestMethod]
   public void BoardTest8() {
-    string patternPath = @"..\..\..\..\Life\patterns\glider.txt";
+    string patternsDir = Path.Combine(testDir, "..", "..", "..", "..", "Life", "patterns");
+    string patternPath = Path.Combine(patternsDir, "glider.txt");
 
     var board = new Board(10, 10, 1, 0);
     board.LoadPattern(patternPath);
@@ -109,7 +112,8 @@ public class BoardTests {
 
   [TestMethod]
   public void BoardTest9() {
-    string boardPath = @"..\..\..\..\Life\board.txt";
+    string lifeDir = Path.Combine(testDir, "..", "..", "..", "..", "Life");
+    string boardPath = Path.Combine(lifeDir, "board.txt");
 
     var board = new Board(50, 20, 1);
 
@@ -122,6 +126,8 @@ public class BoardTests {
 
 [TestClass]
 public class AnalyzerTests {
+  string testDir = Directory.GetCurrentDirectory();
+
   [TestMethod]
   public void AnalyzerTest1() {
     var board = new Board(5, 5, 1, 0);
@@ -148,16 +154,18 @@ public class AnalyzerTests {
 
   [TestMethod]
   public void AnalyzerTest3() {
-    string patternsPath = @"..\..\..\..\Life\patterns\";
+    string patternsDir = Path.Combine(testDir, "..", "..", "..", "..", "Life", "patterns");
 
     var cluster = new HashSet<(int, int)> { (1, 0), (1, 1), (1, 2) };
-    string type = ClusterAnalyzer.ClassifyCluster(cluster, patternsPath);
+    string type = ClusterAnalyzer.ClassifyCluster(cluster, patternsDir);
     Assert.AreEqual("blinker", type);
   }
 }
 
 [TestClass]
 public class SettingsTests {
+  string testDir = Directory.GetCurrentDirectory();
+
   [TestMethod]
   public void GameSettings_SerializationRoundtrip() {
     var original = new GameSettings {
@@ -168,7 +176,8 @@ public class SettingsTests {
       Delay = 100
     };
 
-    string settingsPath = @"..\..\..\..\Life\config.json";
+    string lifeDir = Path.Combine(testDir, "..", "..", "..", "..", "Life");
+    string settingsPath = Path.Combine(lifeDir, "config.json");
     string json = File.ReadAllText(settingsPath);
     var loaded = JsonSerializer.Deserialize<GameSettings>(json);
 
@@ -182,12 +191,13 @@ public class SettingsTests {
 
 [TestClass]
 public class IterativeTests() {
-  string patternsPath = @"..\..\..\..\Life\patterns\";
+  string testDir = Directory.GetCurrentDirectory();
 
   [TestMethod]
   public void GliderTest() {
+    string patternsDir = Path.Combine(testDir, "..", "..", "..", "..", "Life", "patterns");
     var board = new Board(10, 10, 1, 0);
-    board.LoadPattern($"{patternsPath}glider.txt");
+    board.LoadPattern(Path.Combine(patternsDir, "glider.txt"));
 
     var initialPositions = board.Cells.Cast<Cell>().Count(c => c.IsAlive);
 
@@ -199,8 +209,9 @@ public class IterativeTests() {
 
   [TestMethod]
   public void BlockTest() {
+    string patternsDir = Path.Combine(testDir, "..", "..", "..", "..", "Life", "patterns");
     var board = new Board(4, 4, 1, 0);
-    board.LoadPattern($"{patternsPath}block.txt");
+    board.LoadPattern(Path.Combine(patternsDir, "block.txt"));
 
     var before = board.Cells.Cast<Cell>().Where(c => c.IsAlive).ToList();
     board.Advance();
