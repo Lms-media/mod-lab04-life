@@ -176,7 +176,7 @@ namespace cli_life {
         }
       }
 
-      return $"Неизвестная фигура ({cluster.Count} клеток)";
+      return $"Unknown ({cluster.Count} cells)";
     }
 
     private static HashSet<(int x, int y)> NormalizeCluster(HashSet<(int x, int y)> cluster) {
@@ -258,6 +258,22 @@ namespace cli_life {
 
       return history.Distinct().Count() == 1 && history.Count == StabilityThreshold;
     }
+
+    public void SaveValue(int generation, string fileName) {
+      List<string> lines = File.ReadAllLines(fileName).ToList();
+      string newRecord = DateTime.Now.ToString() + ": " + generation;
+      if (lines.Count > 0)
+        lines[lines.Count - 1] = newRecord;
+      else
+        lines.Add(newRecord);
+      int average = 0;
+      foreach (string line in lines) {
+        average += int.Parse(line.Split(": ")[1]);
+      }
+      average /= lines.Count;
+      lines.Add("Average genereations count: " + average);
+      File.WriteAllLines(fileName, lines);
+    }
   }
   class Program {
     static Board board;
@@ -265,8 +281,11 @@ namespace cli_life {
     static StabilityAnalyzer stabilityAnalyzer = new StabilityAnalyzer();
     static int delay;
     static int generation = 1;
+    static int stableGeneration = 1;
 
     static private void Reset(string fileName = "") {
+      generation = 1;
+      stableGeneration = 1;
       board = new Board(
           width: settings.Width,
           height: settings.Height,
@@ -325,18 +344,21 @@ namespace cli_life {
       var clusters = ClusterAnalyzer.FindClusters(board);
       Console.WriteLine($"\nclusters count: {clusters.Count}");
       foreach (var cluster in clusters.OrderBy(c => -c.Count)) {
-        Console.WriteLine($"{ClusterAnalyzer.ClassifyCluster(cluster, patternsPath)} (размер: {cluster.Count})");
+        Console.WriteLine($"{ClusterAnalyzer.ClassifyCluster(cluster, patternsPath)} (size: {cluster.Count})");
       }
     }
-    static void Main(string[] args) {
+
+    static void singleStart() {
       string projectDirectory = Directory.GetParent(Environment.CurrentDirectory).Parent.Parent.FullName;
       string configPath = Path.Combine(projectDirectory, "config.json");
       string savePath = Path.Combine(projectDirectory, "board.txt");
+      string analiticsPath = Path.Combine(projectDirectory, "stabilityAnalysis/stableGenerationsFor0_9.txt");
       string patternsPath = Path.Combine(projectDirectory, "patterns/");
       LoadSettings(configPath);
       //Reset(savePath);
       Reset();
-      board.LoadPattern(patternsPath + "gosperGun.txt");
+      //board.LoadPattern(patternsPath + "gosperGun.txt");
+
       while (true) {
         if (keyAction(savePath) == 1)
           break;
@@ -344,14 +366,24 @@ namespace cli_life {
         Console.Clear();
         Render();
 
-        //printClustersInfo(patternsPath);
         if (stabilityAnalyzer.CheckStability(board)) {
-          Console.WriteLine($"\nСистема стабилизировалась на поколении {generation}");
+          Console.WriteLine($"\nThe system has stabilized for a generation: {stableGeneration}");
+          //stabilityAnalyzer.SaveValue(stableGeneration, analiticsPath);
+          printClustersInfo(patternsPath);
+          break;
+        }
+        else {
+          stableGeneration++;
         }
 
         board.Advance();
         Thread.Sleep(delay);
       }
+    }
+
+    static void Main(string[] args) {
+      //for (int i = 0; i < 16; i++)
+      singleStart();
     }
   }
 }
