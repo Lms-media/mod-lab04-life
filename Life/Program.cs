@@ -7,12 +7,13 @@ using System.Threading;
 using System.IO;
 using System.Text.Json;
 using ScottPlot;
+using ScottPlot.MultiplotLayouts;
 
 namespace cli_life {
   public class Cell {
     public bool IsAlive;
     public readonly List<Cell> neighbors = new List<Cell>();
-    private bool IsAliveNext;
+    public bool IsAliveNext;
     public void DetermineNextLiveState() {
       int liveNeighbors = neighbors.Where(x => x.IsAlive).Count();
       if (IsAlive)
@@ -78,37 +79,53 @@ namespace cli_life {
       }
     }
     public void SaveToFile(string fileName) {
-      using (StreamWriter writer = new StreamWriter(fileName)) {
-        writer.WriteLine($"{Columns} {Rows} {CellSize}");
-        for (int y = 0; y < Rows; y++) {
-          for (int x = 0; x < Columns; x++) {
-            writer.Write(Cells[x, y].IsAlive ? '1' : '0');
+      if (File.Exists(fileName)) {
+        using (StreamWriter writer = new StreamWriter(fileName)) {
+          writer.WriteLine($"{Columns} {Rows} {CellSize}");
+          for (int y = 0; y < Rows; y++) {
+            for (int x = 0; x < Columns; x++) {
+              writer.Write(Cells[x, y].IsAlive ? '1' : '0');
+            }
+            writer.WriteLine();
           }
-          writer.WriteLine();
         }
+      }
+      else {
+        throw new Exception($"File {fileName} not found");
       }
     }
     public void LoadFromFile(string fileName) {
-      using (StreamReader reader = new StreamReader(fileName)) {
-        int cols = int.Parse(dimensions[0]);
-        int rows = int.Parse(dimensions[1]);
+      if (File.Exists(fileName)) {
+        using (StreamReader reader = new StreamReader(fileName)) {
+          var dimensions = reader.ReadLine().Split(' ');
+          int cols = int.Parse(dimensions[0]);
+          int rows = int.Parse(dimensions[1]);
 
-        for (int y = 0; y < rows; y++) {
-          string line = reader.ReadLine();
-          for (int x = 0; x < cols; x++) {
-            Cells[x, y].IsAlive = line[x] == '1';
+          for (int y = 0; y < ((rows <= Rows) ? rows : Rows); y++) {
+            string line = reader.ReadLine();
+            for (int x = 0; x < ((cols <= Columns) ? cols : Columns); x++) {
+              Cells[x, y].IsAlive = line[x] == '1';
+            }
           }
         }
       }
+      else {
+        throw new Exception($"File {fileName} not found");
+      }
     }
     public void LoadPattern(string fileName, int offsetX = 0, int offsetY = 0) {
-      string[] lines = File.ReadAllLines(fileName);
-      for (int y = 0; y < lines.Length; y++) {
-        for (int x = 0; x < lines[y].Length; x++) {
-          int targetX = (x + offsetX) % Columns;
-          int targetY = (y + offsetY) % Rows;
-          Cells[targetX, targetY].IsAlive = lines[y][x] == '1';
+      if (File.Exists(fileName)) {
+        string[] lines = File.ReadAllLines(fileName);
+        for (int y = 0; y < ((lines.Length <= Rows) ? lines.Length : Rows); y++) {
+          for (int x = 0; x < ((lines[y].Length <= Columns) ? lines[y].Length : Columns); x++) {
+            int targetX = (x + offsetX) % Columns;
+            int targetY = (y + offsetY) % Rows;
+            Cells[targetX, targetY].IsAlive = lines[y][x] == '1';
+          }
         }
+      }
+      else {
+        throw new Exception($"File {fileName} not found");
       }
     }
   }
@@ -187,19 +204,24 @@ namespace cli_life {
     private static Dictionary<string, HashSet<(int x, int y)>> LoadTemplates(string dir) {
       var templates = new Dictionary<string, HashSet<(int x, int y)>>();
 
-      foreach (var file in Directory.GetFiles(dir, "*.txt")) {
-        var pattern = new HashSet<(int x, int y)>();
-        string[] lines = File.ReadAllLines(file);
+      try {
+        foreach (var file in Directory.GetFiles(dir, "*.txt")) {
+          var pattern = new HashSet<(int x, int y)>();
+          string[] lines = File.ReadAllLines(file);
 
-        for (int y = 0; y < lines.Length; y++) {
-          for (int x = 0; x < lines[y].Length; x++) {
-            if (lines[y][x] == '1') {
-              pattern.Add((x, y));
+          for (int y = 0; y < lines.Length; y++) {
+            for (int x = 0; x < lines[y].Length; x++) {
+              if (lines[y][x] == '1') {
+                pattern.Add((x, y));
+              }
             }
           }
-        }
 
-        templates.Add(Path.GetFileNameWithoutExtension(file), pattern);
+          templates.Add(Path.GetFileNameWithoutExtension(file), pattern);
+        }
+      }
+      catch (Exception ex) {
+        Console.WriteLine(ex.ToString());
       }
 
       return templates;
@@ -258,19 +280,24 @@ namespace cli_life {
     }
 
     public void SaveValue(int generation, string fileName) {
-      List<string> lines = File.ReadAllLines(fileName).ToList();
-      string newRecord = $"{DateTime.Now.ToString()}: {generation}";
-      if (lines.Count > 0)
-        lines[lines.Count - 1] = newRecord;
-      else
-        lines.Add(newRecord);
-      int average = 0;
-      foreach (string line in lines) {
-        average += int.Parse(line.Split(": ")[1]);
+      if (File.Exists(fileName)) {
+        List<string> lines = File.ReadAllLines(fileName).ToList();
+        string newRecord = $"{DateTime.Now.ToString()}: {generation}";
+        if (lines.Count > 0)
+          lines[lines.Count - 1] = newRecord;
+        else
+          lines.Add(newRecord);
+        int average = 0;
+        foreach (string line in lines) {
+          average += int.Parse(line.Split(": ")[1]);
+        }
+        average /= lines.Count;
+        lines.Add($"Average genereations count: {average}");
+        File.WriteAllLines(fileName, lines);
       }
-      average /= lines.Count;
-      lines.Add($"Average genereations count: {average}");
-      File.WriteAllLines(fileName, lines);
+      else {
+        throw new Exception($"File {fileName} not found");
+      }
     }
   }
   class Program {
@@ -309,7 +336,6 @@ namespace cli_life {
       Console.Write($"Generation {generation}");
       generation++;
     }
-
     static void LoadSettings(string fileName) {
       try {
         string json = File.ReadAllText(fileName);
@@ -345,7 +371,6 @@ namespace cli_life {
         Console.WriteLine($"{ClusterAnalyzer.ClassifyCluster(cluster, patternsPath)} (size: {cluster.Count})");
       }
     }
-
     static void SingleStart() {
       string projectDirectory = Directory.GetParent(Environment.CurrentDirectory).Parent.Parent.FullName;
       string configPath = Path.Combine(projectDirectory, "config.json");
@@ -353,11 +378,13 @@ namespace cli_life {
       string analiticsPath = Path.Combine(projectDirectory, "stabilityAnalysis/stableGenerationsFor0_9.txt");
       string patternsPath = Path.Combine(projectDirectory, "patterns/");
       LoadSettings(configPath);
-      //Reset(savePath);
+      Reset(savePath);
       Reset();
-      //board.LoadPattern(patternsPath + "gosperGun.txt");
+      board.LoadPattern(patternsPath + "gosperGun.txt");
 
       while (true) {
+        if (generation == 10)
+          board.LoadFromFile(savePath);
         if (KeyAction(savePath) == 1)
           break;
 
@@ -366,7 +393,7 @@ namespace cli_life {
 
         if (stabilityAnalyzer.CheckStability(board)) {
           Console.WriteLine($"\nThe system has stabilized for a generation: {stableGeneration}");
-          //stabilityAnalyzer.SaveValue(stableGeneration, analiticsPath);
+          stabilityAnalyzer.SaveValue(stableGeneration, analiticsPath);
           PrintClustersInfo(patternsPath);
           break;
         }
@@ -377,6 +404,19 @@ namespace cli_life {
         board.Advance();
         Thread.Sleep(delay);
       }
+    }
+    static void DataCollectStart() {
+      string projectDirectory = Directory.GetParent(Environment.CurrentDirectory).Parent.Parent.FullName;
+      string dataPath = Path.Combine(projectDirectory, "data.txt");
+      string allDataPath = Path.Combine(projectDirectory, "dataForAll.txt");
+      string plotPath = Path.Combine(projectDirectory, "plot.png");
+      string allPlotPath = Path.Combine(projectDirectory, "plotForAll.png");
+
+      RunPopulationTracking(dataPath);
+      CreatePopulationPlot(dataPath, plotPath);
+
+      RunPopulationTrackingForAll(allDataPath);
+      CreatePopulationPlotForAll(allDataPath, allPlotPath);
     }
     static void RunPopulationTracking(string fileName) {
       double density = 0.6;
@@ -504,11 +544,6 @@ namespace cli_life {
     }
     static void Main(string[] args) {
       SingleStart();
-      //string projectDirectory = Directory.GetParent(Environment.CurrentDirectory).Parent.Parent.FullName;
-      //string dataPath = Path.Combine(projectDirectory, "data.txt");
-      //string plotPath = Path.Combine(projectDirectory, "plot.png");
-      //RunPopulationTracking(dataPath);
-      //CreatePopulationPlot(dataPath, plotPath);
     }
   }
 }
