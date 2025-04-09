@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using System.Threading;
 using System.IO;
 using System.Text.Json;
+using ScottPlot;
 
 namespace cli_life {
   public class Cell {
@@ -89,10 +90,8 @@ namespace cli_life {
     }
     public void LoadFromFile(string fileName) {
       using (StreamReader reader = new StreamReader(fileName)) {
-        var dimensions = reader.ReadLine().Split(' ');
         int cols = int.Parse(dimensions[0]);
         int rows = int.Parse(dimensions[1]);
-        //int cellSize = int.Parse(dimensions[2]);
 
         for (int y = 0; y < rows; y++) {
           string line = reader.ReadLine();
@@ -113,7 +112,6 @@ namespace cli_life {
       }
     }
   }
-
   public class GameSettings {
     public int Width { get; set; } = 50;
     public int Height { get; set; } = 20;
@@ -261,7 +259,7 @@ namespace cli_life {
 
     public void SaveValue(int generation, string fileName) {
       List<string> lines = File.ReadAllLines(fileName).ToList();
-      string newRecord = DateTime.Now.ToString() + ": " + generation;
+      string newRecord = $"{DateTime.Now.ToString()}: {generation}";
       if (lines.Count > 0)
         lines[lines.Count - 1] = newRecord;
       else
@@ -271,7 +269,7 @@ namespace cli_life {
         average += int.Parse(line.Split(": ")[1]);
       }
       average /= lines.Count;
-      lines.Add("Average genereations count: " + average);
+      lines.Add($"Average genereations count: {average}");
       File.WriteAllLines(fileName, lines);
     }
   }
@@ -323,7 +321,7 @@ namespace cli_life {
         delay = settings.Delay;
       }
     }
-    static int keyAction(string savePath) {
+    static int KeyAction(string savePath) {
       if (Console.KeyAvailable) {
         var key = Console.ReadKey(true).Key;
         if (key == ConsoleKey.S) {
@@ -340,7 +338,7 @@ namespace cli_life {
       }
       return 0;
     }
-    static void printClustersInfo(string patternsPath) {
+    static void PrintClustersInfo(string patternsPath) {
       var clusters = ClusterAnalyzer.FindClusters(board);
       Console.WriteLine($"\nclusters count: {clusters.Count}");
       foreach (var cluster in clusters.OrderBy(c => -c.Count)) {
@@ -348,7 +346,7 @@ namespace cli_life {
       }
     }
 
-    static void singleStart() {
+    static void SingleStart() {
       string projectDirectory = Directory.GetParent(Environment.CurrentDirectory).Parent.Parent.FullName;
       string configPath = Path.Combine(projectDirectory, "config.json");
       string savePath = Path.Combine(projectDirectory, "board.txt");
@@ -360,7 +358,7 @@ namespace cli_life {
       //board.LoadPattern(patternsPath + "gosperGun.txt");
 
       while (true) {
-        if (keyAction(savePath) == 1)
+        if (KeyAction(savePath) == 1)
           break;
 
         Console.Clear();
@@ -369,7 +367,7 @@ namespace cli_life {
         if (stabilityAnalyzer.CheckStability(board)) {
           Console.WriteLine($"\nThe system has stabilized for a generation: {stableGeneration}");
           //stabilityAnalyzer.SaveValue(stableGeneration, analiticsPath);
-          printClustersInfo(patternsPath);
+          PrintClustersInfo(patternsPath);
           break;
         }
         else {
@@ -380,10 +378,137 @@ namespace cli_life {
         Thread.Sleep(delay);
       }
     }
+    static void RunPopulationTracking(string fileName) {
+      double density = 0.6;
+      int maxGenerations = 600;
+      StabilityAnalyzer stabilityAnalyzer = new StabilityAnalyzer();
 
+      File.WriteAllText(fileName,
+          "Generation AliveCells\n");
+
+      var board = new Board(50, 20, 1, density);
+      int gen = 0;
+      while (gen < maxGenerations && !stabilityAnalyzer.CheckStability(board)) {
+        int aliveCount = 0;
+        for (int y = 0; y < board.Rows; y++)
+          for (int x = 0; x < board.Columns; x++)
+            if (board.Cells[x, y].IsAlive)
+              aliveCount++;
+
+        File.AppendAllText(fileName,
+            $"{gen} {aliveCount}\n");
+
+        board.Advance();
+        gen++;
+      }
+    }
+    public static void CreatePopulationPlot(string dataFileName, string plotFileName) {
+      var data = File.ReadAllLines(dataFileName)
+          .Skip(1)
+          .Select(line => line.Split(' '))
+          .Where(parts => parts.Length == 2)
+          .Select(parts => new {
+            Generation = int.Parse(parts[0]),
+            AliveCells = int.Parse(parts[1])
+          })
+          .ToList();
+
+      var plot = new Plot();
+
+      var xValues = data.Select(x => (double)x.Generation).ToArray();
+      var yValues = data.Select(x => (double)x.AliveCells).ToArray();
+      var sig = plot.Add.Scatter(xValues, yValues);
+      sig.MarkerSize = 1;
+
+      plot.Title("Dynamics of the number of living cells for density 0.6", size: 16);
+      plot.XLabel("Generation number", size: 14);
+      plot.YLabel("Number of cells", size: 14);
+
+      plot.Axes.AutoScale();
+
+      plot.SavePng(plotFileName, 500, 500);
+    }
+    static void RunPopulationTrackingForAll(string fileName) {
+      double[] densities = { 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9 };
+      int maxGenerations = 600;
+
+      File.WriteAllText(fileName,
+          "Generation Density AliveCells\n");
+
+      foreach (var density in densities) {
+        var board = new Board(50, 20, 1, density);
+
+        for (int gen = 0; gen < maxGenerations; gen++) {
+          int aliveCount = 0;
+          for (int y = 0; y < board.Rows; y++)
+            for (int x = 0; x < board.Columns; x++)
+              if (board.Cells[x, y].IsAlive)
+                aliveCount++;
+
+          File.AppendAllText(fileName,
+              $"{gen} {density} {aliveCount}\n");
+
+          board.Advance();
+        }
+      }
+    }
+    public static void CreatePopulationPlotForAll(string dataFileName, string plotFileName) {
+      var data = File.ReadAllLines(dataFileName)
+          .Skip(1)
+          .Select(line => line.Split(' '))
+          .Where(parts => parts.Length == 3)
+          .Select(parts => new {
+            Generation = int.Parse(parts[0]),
+            Density = double.Parse(parts[1]),
+            AliveCells = int.Parse(parts[2])
+          })
+          .ToList();
+
+      var plot = new Plot();
+
+      var groups = data.GroupBy(x => x.Density);
+
+      var colors = new[] {
+        Colors.Red,
+        Colors.Orange,
+        Colors.Yellow,
+        Colors.Green,
+        Colors.SkyBlue,
+        Colors.DarkBlue,
+        Colors.Violet,
+        Colors.Gray,
+        Colors.Black
+      };
+
+      int colorIndex = 0;
+      foreach (var group in groups) {
+        var xValues = group.Select(x => (double)x.Generation).ToArray();
+        var yValues = group.Select(x => (double)x.AliveCells).ToArray();
+
+        var sig = plot.Add.Scatter(xValues, yValues);
+        sig.Color = colors[colorIndex];
+        sig.MarkerSize = 1;
+        sig.LegendText = group.First().Density.ToString();
+
+        colorIndex = (colorIndex + 1) % colors.Length;
+      }
+
+      plot.Title("Dynamics of the number of living cells", size: 16);
+      plot.XLabel("Generation number", size: 14);
+      plot.YLabel("Number of cells", size: 14);
+
+      plot.Axes.AutoScale();
+      plot.ShowLegend();
+
+      plot.SavePng(plotFileName, 2000, 1000);
+    }
     static void Main(string[] args) {
-      //for (int i = 0; i < 16; i++)
-      singleStart();
+      SingleStart();
+      //string projectDirectory = Directory.GetParent(Environment.CurrentDirectory).Parent.Parent.FullName;
+      //string dataPath = Path.Combine(projectDirectory, "data.txt");
+      //string plotPath = Path.Combine(projectDirectory, "plot.png");
+      //RunPopulationTracking(dataPath);
+      //CreatePopulationPlot(dataPath, plotPath);
     }
   }
 }
