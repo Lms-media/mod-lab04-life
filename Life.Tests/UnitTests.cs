@@ -167,7 +167,7 @@ public class SettingsTests {
   string testDir = Directory.GetCurrentDirectory();
 
   [TestMethod]
-  public void GameSettings_SerializationRoundtrip() {
+  public void SettingsTest() {
     var original = new GameSettings {
       Width = 50,
       Height = 20,
